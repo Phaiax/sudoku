@@ -92,7 +92,7 @@ s = cv2.getTrackbarPos(switch,'image')
 # eventloop
 while(1):
     cv2.imshow('image',img)
-    k = cv2.waitKey(1) & 0xFF
+    k = cv2.waitKey(timeout) & 0xFF
     if k == ord('m'):
         pass # key m pressed
     elif k == 27:
@@ -112,19 +112,83 @@ def draw_circle(event,x,y,flags,param):
 
 # Make special boarders around img (for kernel functions). [i for i in dir(cv2) if 'BORDER' in i]
 cv2.copyMakeBorder(src, top, bottom, left, right, borderType[, dst[, value]]) -> dst
+
 cv2.cvtColor(src, code[, dst[, dstCn]]) -> dst
-cv2.threshold(src, thresh, maxval, type[, dst]) -> retval, dst
-cv2.bitwise_not(src[, dst[, mask]]) -> dst
-cv2.bitwise_and(src1, src2[, dst[, mask]]) -> dst
-cv2.bitwise_or(src1, src2[, dst[, mask]]) -> dst
-cv2.bitwise_xor(src1, src2[, dst[, mask]]) -> dst
-cv2.medianBlur(src, ksize[, dst]) -> dst
+
+# THRESHOLDING
+    # type=cv2.THRESH_BINARY | THRESH_BINARY_INV | THRESH_TRUNC | THRESH_TOZERO | THRESH_TOZERO_INV
+    cv2.threshold(src, thresh, maxval, type[, dst]) -> retval, dst
+    # automatically find best threshold
+    cv2.threshold(src,0,255,cv2.THRESH_BINARY+cv2.THRESH_OTSU) -> retval, dst
+    #  adaptiveMethod=cv2.ADAPTIVE_THRESH_MEAN_C | cv2.ADAPTIVE_THRESH_GAUSSIAN_C
+    cv2.adaptiveThreshold(src, maxValue, adaptiveMethod, thresholdType, blockSize, C[, dst]) -> dst
+    cv2.inRange(src, lowerb, upperb[, dst]) -> dst
+
+# BITWISE
+    cv2.bitwise_not(src[, dst[, mask]]) -> dst
+    cv2.bitwise_and(src1, src2[, dst[, mask]]) -> dst
+    cv2.bitwise_or(src1, src2[, dst[, mask]]) -> dst
+    cv2.bitwise_xor(src1, src2[, dst[, mask]]) -> dst
+
+# BLUR
+    # Averaging
+    blur(src, ksize=(,) [, dst[, anchor[, borderType]]]) -> dst
+    boxFilter(src, ddepth, ksize=(,) [, dst[, anchor[, normalize[, borderType]]]]) -> dst
+    # Gaussian
+    cv2.GaussianBlur(src, ksize=(,), sigmaX[, dst[, sigmaY[, borderType]]]) -> dst
+    # Median (does not introduce new color values)
+    cv2.medianBlur(src, ksize[, dst]) -> dst
+    # Bilateral (preserves edges)
+    bilateralFilter(src, d, sigmaColor, sigmaSpace[, dst[, borderType]]) -> dst
+
+
+# KERNEL
+    kernel = np.ones((5,5),np.float32)/25
+    filter2D(src, ddepth, kernel[, dst[, anchor[, delta[, borderType]]]]) -> dst
+
+# MORPHOLOGY
+    # Kernel: Rectangular
+        kernel = np.ones((5,5),np.uint8)
+        # or if not rectangular structured:
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT | MORPH_ELLIPSE | MORPH_CROSS,(5,5))
+    eroded = cv2.erode(img,kernel,iterations = 1)
+    dilation = cv2.dilate(img,kernel,iterations = 1)
+    opening = cv2.morphologyEx(img, cv2.MORPH_OPEN, kernel)
+    closing = cv2.morphologyEx(img, cv2.MORPH_CLOSE, kernel)
+    gradient = cv2.morphologyEx(img, cv2.MORPH_GRADIENT, kernel)
+    tophat = cv2.morphologyEx(img, cv2.MORPH_TOPHAT, kernel)
+    blackhat = cv2.morphologyEx(img, cv2.MORPH_BLACKHAT, kernel)
+
 cv2.countNonZero(img)
 
 # IMAGE MANIPILATION
 # ==================================================
-cv2.add(img1, img2) # is saturating
-cv2.addWeighted(img1,a,img2,b,c) # a*img1 + b*img2 + c
+
+# MERGING
+    cv2.add(img1, img2) # is saturating
+    cv2.addWeighted(img1,a,img2,b,c) # a*img1 + b*img2 + c
+
+# AFFINE TRANSFORM
+    # In affine transformation, all parallel lines in the original image will still be parallel in the output image.
+    warpAffine(src, M, dsize=(,) [, dst[, flags[, borderMode[, borderValue]]]]) -> dst
+    # TRANSLATE
+    M = np.float32([[1,0,tx],[0,1,ty]])
+    # ROTATE
+    M = getRotationMatrix2D(center=(,), angle, scale=(,))
+    # FROM POINTS
+    pts1 = np.float32([[50,50],[200,50],[50,200]])
+    pts2 = np.float32([[10,100],[200,50],[100,250]])
+    M = cv2.getAffineTransform(pts1,pts2)
+
+# PERSPECTIVE TRANSFORM
+    #
+    warpPerspective(src, M, dsize=(,) [, dst[, flags[, borderMode[, borderValue]]]]) -> dst
+    # FROM POINTS
+    pts1 = np.float32([[56,65],[368,52],[28,387],[389,390]])
+    pts2 = np.float32([[0,0],[300,0],[0,300],[300,300]])
+    M = cv2.getPerspectiveTransform(pts1,pts2)
+
+
 
 
 # PATTERNS

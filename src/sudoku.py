@@ -1,84 +1,85 @@
 import numpy as np
 import cv2
 from matplotlib import pyplot as plt
+import sys
 
-img = cv2.imread('assets/test/s1.jpg',cv2.IMREAD_COLOR)
-img = cv2.resize(img, (400, 400))
+# GLOBALS
+a=10
+b=10
+c=10
+adaptive_kernel_size = 17
+redraw = None
 
-cv2.line(img,(0,0),img.shape[0:2],(255,0,0),5)
+def load_image(path, w):
+    img = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
+    h = int( img.shape[1] * w / img.shape[0] )
+    img = cv2.resize(img, (w, h))
 
-ball = img[280:340, 330:390]
-img[273:333, 100:160] = ball
+    return img
 
+img = load_image(path='assets/test/s1.jpg', w=700)
 
-# plt.imshow(img, interpolation = 'bicubic')
-# plt.xticks([]), plt.yticks([])  # to hide tick values on X and Y axis
-# plt.show()
-
-drawing = False # true if mouse is pressed
-mode = True # if True, draw rectangle. Press 'm' to toggle to curve
-ix,iy = -1,-1
-color = (0, 0, 0)
-
-# mouse callback function
-# mouse callback function
-def draw_circle(event,x,y,flags,param):
-    global ix,iy,drawing,mode,color
-
-    if event == cv2.EVENT_LBUTTONDOWN:
-        drawing = True
-        ix,iy = x,y
-
-    elif event == cv2.EVENT_MOUSEMOVE:
-        if drawing == True:
-            if mode == True:
-                cv2.rectangle(img,(ix,iy),(x,y),color,-1)
-            else:
-                cv2.circle(img,(x,y),5,color,-1)
-
-    elif event == cv2.EVENT_LBUTTONUP:
-        drawing = False
-        if mode == True:
-            cv2.rectangle(img,(ix,iy),(x,y),color,-1)
-        else:
-            cv2.circle(img,(x,y),5,color,-1)
+# Buffers
+img2 = np.zeros(img.shape, np.uint8)
+img3 = np.zeros(img.shape, np.uint8)
+img4 = np.zeros(img.shape, np.uint8)
 
 
-def nothing(x):
-    pass
+def init_window():
+    cv2.namedWindow('image')
+    cv2.createTrackbar('a','image',0,255,on_trackbar_change)
+    cv2.createTrackbar('b','image',0,255,on_trackbar_change)
+    cv2.createTrackbar('c','image',0,255,on_trackbar_change)
 
-# Create a black image, a window
-cv2.namedWindow('image')
+def on_trackbar_change(x):
+    global a,b,c,img,img2,redraw
 
-# create trackbars for color change
-cv2.createTrackbar('R','image',0,255,nothing)
-cv2.createTrackbar('G','image',0,255,nothing)
-cv2.createTrackbar('B','image',0,255,nothing)
+    a = cv2.getTrackbarPos('a','image')
+    b = cv2.getTrackbarPos('b','image')
+    c = cv2.getTrackbarPos('c','image')
 
-# create switch for ON/OFF functionality
-switch = '0 : OFF \n1 : ON'
-cv2.createTrackbar(switch, 'image',0,1,nothing)
-
-cv2.setMouseCallback('image',draw_circle)
-
-while(1):
-    cv2.imshow('image',img)
-    k = cv2.waitKey(1) & 0xFF
-    if k == ord('m'):
-        mode = not mode
-        cv2.setTrackbarPos(switch, 'image', 1 if mode else 0)
-    elif k == 27:
-        break
-
-    r = cv2.getTrackbarPos('R','image')
-    g = cv2.getTrackbarPos('G','image')
-    b = cv2.getTrackbarPos('B','image')
-    s = cv2.getTrackbarPos(switch,'image')
-
-    mode = s != 0
-
-    color = (b,g,r)
+    improve(src=img, dst=img2)
+    redraw = img2
 
 
-cv2.destroyAllWindows()
 
+def improve(src, dst):
+    global b,a,c
+    k = a/8*2+3
+    print "Kernel:", k, ", sigmaColor:", b, "sigmaSpace:", c
+    sys.stdout.flush()
+
+    #cv2.bilateralFilter(src,-1,b,c,dst=dst)
+    print "Done"
+    sys.stdout.flush()
+    #img3 = img
+    #print "blur"
+    #cv2.GaussianBlur(src, ksize=(k,k), sigmaX=b, dst=dst)
+
+    # r, _ = cv2.threshold(img, threshold, 255, cv2.THRESH_BINARY, dst=img2)
+    #cv2.adaptiveThreshold(img, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY,
+    #        adaptive_kernel_size, 0, dst=img4)
+
+def eventloop():
+    global redraw
+
+    while(1):
+        k = cv2.waitKey(1) & 0xFF
+        if k == ord('m'):
+            pass
+        elif k == 27:
+            break
+        elif redraw is not None:
+            print "Redraw"
+            sys.stdout.flush()
+            cv2.imshow('image',redraw)
+            redraw = None
+
+    cv2.destroyAllWindows()
+
+
+
+init_window()
+improve(src=img, dst=img2)
+redraw=img2
+eventloop()
