@@ -2,11 +2,11 @@ import numpy as np
 import cv2
 from matplotlib import pyplot as plt
 import sys
+from cfg import Cfg
+
 
 # GLOBALS
-a=10
-b=10
-c=10
+cf = Cfg()
 adaptive_kernel_size = 17
 redraw = None
 
@@ -27,53 +27,75 @@ img4 = np.zeros(img.shape, np.uint8)
 
 def init_window():
     cv2.namedWindow('image')
-    cv2.createTrackbar('a','image',0,255,on_trackbar_change)
-    cv2.createTrackbar('b','image',0,255,on_trackbar_change)
-    cv2.createTrackbar('c','image',0,255,on_trackbar_change)
 
 def on_trackbar_change(x):
-    global a,b,c,img,img2,redraw
-
-    a = cv2.getTrackbarPos('a','image')
-    b = cv2.getTrackbarPos('b','image')
-    c = cv2.getTrackbarPos('c','image')
-
+    global img,img2,cf
     improve(src=img, dst=img2)
-    redraw = img2
-
+    cf.redraw(img2)
 
 
 def improve(src, dst):
-    global b,a,c
-    k = a/8*2+3
-    print "Kernel:", k, ", sigmaColor:", b, "sigmaSpace:", c
-    sys.stdout.flush()
+    global cf
+    (a, _) = cf.get_slider('a',on_trackbar_change)
+    k = int(a/8*2+3)
 
     #cv2.bilateralFilter(src,-1,b,c,dst=dst)
-    print "Done"
-    sys.stdout.flush()
     #img3 = img
     #print "blur"
     #cv2.GaussianBlur(src, ksize=(k,k), sigmaX=b, dst=dst)
 
+    (m, _) = cf.get_toggle('m', 1, callback=on_trackbar_change)
+    (n, _) = cf.get_toggle('n', 1, callback=on_trackbar_change)
+
+    ddepth = cv2.CV_16S if n == 0 else cv2.CV_8U
+
+    if m == 0:
+        print "Kernel:", k-2,
+        sys.stdout.flush()
+        s16 = cv2.Laplacian(src, ddepth=ddepth, ksize=k-2)
+
+    if m == 1:
+        (b, _) = cf.get_slider('dx',on_trackbar_change)
+        (c, _) = cf.get_slider('dy',on_trackbar_change)
+
+        if b > 29: b = 29
+        if c > 29: c = 29
+        if k > 31: k = 31
+        if k <= b+1: k = (b+2)/2*2+1
+        if k <= c+1: k = (c+2)/2*2+1
+        print "Kernel:", k, ", dx:", b+1, "dy:", c+1,
+        sys.stdout.flush()
+        s16 = cv2.Sobel(src, dx=b+1, dy=c+1, ddepth=ddepth, ksize=k)
+
+    if n == 0:
+        as16 = np.absolute(s16)
+        dst[:,:] = np.uint8(as16)
+    if n == 1:
+        dst[:,:] = s16
+
+
+
     # r, _ = cv2.threshold(img, threshold, 255, cv2.THRESH_BINARY, dst=img2)
     #cv2.adaptiveThreshold(img, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY,
     #        adaptive_kernel_size, 0, dst=img4)
+    print "Done"
+    sys.stdout.flush()
 
 def eventloop():
-    global redraw
+    global cf
 
     while(1):
         k = cv2.waitKey(1) & 0xFF
-        if k == ord('m'):
-            pass
-        elif k == 27:
+
+        cf.got_key(k)
+        if k == 27:
             break
-        elif redraw is not None:
-            print "Redraw"
-            sys.stdout.flush()
-            cv2.imshow('image',redraw)
-            redraw = None
+
+        img = cf.redraw()
+        if img is not None:
+            #print "Redraw"
+            #sys.stdout.flush()
+            cv2.imshow('image',img)
 
     cv2.destroyAllWindows()
 
@@ -81,5 +103,5 @@ def eventloop():
 
 init_window()
 improve(src=img, dst=img2)
-redraw=img2
+cf.redraw(img2)
 eventloop()

@@ -159,6 +159,12 @@ cv2.cvtColor(src, code[, dst[, dstCn]]) -> dst
     tophat = cv2.morphologyEx(img, cv2.MORPH_TOPHAT, kernel)
     blackhat = cv2.morphologyEx(img, cv2.MORPH_BLACKHAT, kernel)
 
+# GRADIENTS / HIGH PASS FILTERS
+    # if ksize=-1 -> Scharr is used
+    cv2.Sobel(src, ddepth, dx, dy[, dst[, ksize[, scale[, delta[, borderType]]]]]) -> dst
+    cv2.Scharr(src, ddepth, dx, dy[, dst[, scale[, delta[, borderType]]]]) -> dst
+    cv2.Laplacian(src, ddepth[, dst[, ksize[, scale[, delta[, borderType]]]]]) -> dst
+
 cv2.countNonZero(img)
 
 # IMAGE MANIPILATION
