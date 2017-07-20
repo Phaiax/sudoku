@@ -165,6 +165,107 @@ cv2.cvtColor(src, code[, dst[, dstCn]]) -> dst
     cv2.Scharr(src, ddepth, dx, dy[, dst[, scale[, delta[, borderType]]]]) -> dst
     cv2.Laplacian(src, ddepth[, dst[, ksize[, scale[, delta[, borderType]]]]]) -> dst
 
+# PYDAMIDS
+    # gaussian scale area by 1/4 or 4
+    cv2.pyrUp(src[, dst[, dstsize[, borderType]]]) -> dst # times 4 pixels
+    cv2.pyrDown(src[, dst[, dstsize[, borderType]]]) -> dst # times 1/4 pixels
+    # Laplacian pyramid for level x
+    cv2.substract(levelx, levelx_then_downscaled_then_upscaled)
+
+# CONTOURS
+    # finds white spots (best with b/w images, no grey)
+    # mode = cv2.CHAIN_APPROX_NONE | cv2.CHAIN_APPROX_SIMPLE
+    findContours(image, mode, method[, contours[, hierarchy[, offset]]]) -> contours, hierarchy
+    drawContours(image, contours, contourIdx, color[, thickness[, lineType[, hierarchy[, maxLevel[, offset]]]]]) -> None
+    cv2.moments(contours[i])
+    cv2.contourArea(contours[i]) -> area
+        equi_diameter = np.sqrt(4*area/np.pi)
+    cv2.arcLength(contours[i], closed)
+    cv2.approxPolyDP(contours[i],epsilon,True)
+    cv2.convexHull(contours[i] [, hull[, clockwise[, returnPoints]]) -> hull
+    cv2.isContourConvex(contours[i])
+    cv2.boundingRect(contours[i]) -> x,y,w,h
+        aspect_ratio = float(w)/h
+        extent = float(area)/(w*h)
+        solidity = float(area)/cv2.contourArea(hull)
+    cv2.minAreaRect(contours[i]) -> rect # rotated bounding rect
+    cv2.minEnclosingCircle(contours[i])
+    cv2.fitEllipse(contours[i])
+    cv2.fitLine(contours[i], cv2.DIST_L2,0,0.01,0.01) -> [vx,vy,x,y]
+
+# Histogram
+    cv2.calcHist(images=[img], channels=[0], mask=None, histSize=[256], ranges=[0,256]
+            [, hist[, accumulate]]) -> hist
+    # draw
+    plt.hist(img.ravel(),256,[0,256]); plt.show()
+    # equalization
+    equ = cv2.equalizeHist(img [,equ])
+    # better localized equalization (Contrast Limited Adaptive Histogram Equalization)
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
+    cl1 = clahe.apply(img)
+    # two dimensional hist
+    hsv = cv2.cvtColor(img,cv2.COLOR_BGR2HSV)
+    hist = cv2.calcHist([hsv], [0, 1], None, [180, 256], [0, 180, 0, 256])
+    plt.imshow(hist,interpolation = 'nearest')
+    # Backprojection: Use histogram of searched object to get a probability mask from a picture
+    cv2.calcBackProject
+    # https://opencv-python-tutroals.readthedocs.io/en/latest/py_tutorials/py_imgproc/py_histograms/py_histogram_backprojection/py_histogram_backprojection.html
+
+
+# Fourier Transformation
+    # Speedup with optimal size, pad with zeros
+    nrows = cv2.getOptimalDFTSize(rows)
+    ncols = cv2.getOptimalDFTSize(cols)
+    nimg = cv2.copyMakeBorder(img, 0, nrows - rows, 0, ncols - cols, cv2.BORDER_CONSTANT, value = 0)
+    #
+    dft = cv2.dft(np.float32(nimg),flags = cv2.DFT_COMPLEX_OUTPUT)
+    dft_shift = np.fft.fftshift(dft) # make 0,0 into center
+    #                                            real plane       imag plane
+    magnitude_spectrum = 20*np.log(cv2.magnitude(dft_shift[:,:,0],dft_shift[:,:,1]))
+    # or
+    cv2.cartToPolar(x, y[, magnitude[, angle[, angleInDegrees]]]) -> magnitude, angle
+    # and inverse
+    f_ishift = np.fft.ifftshift(fshift) # reverse np.fft.fftshift
+    img_back = cv2.idft(f_ishift)
+    img_back = cv2.magnitude(img_back[:,:,0],img_back[:,:,1])
+
+# Template matching
+    methods = cv2.TM_CCOEFF | cv2.TM_CCOEFF_NORMED | cv2.TM_CCORR |
+                cv2.TM_CCORR_NORMED | cv2.TM_SQDIFF | cv2.TM_SQDIFF_NORMED
+    res = cv2.matchTemplate(img,template,method)
+    min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
+    # or for multiple
+    threshold = 0.8
+    loc = np.where( res >= threshold)
+
+# Hough transform
+    # input is binary image (from canny)
+    lines = cv2.HoughLines(edges,1,np.pi/180,200)
+    # see for display
+    # https://opencv-python-tutroals.readthedocs.io/en/latest/py_tutorials/py_imgproc/py_houghlines/py_houghlines.html
+    # faster:
+    lines = cv2.HoughLinesP(edges,1,np.pi/180,100,minLineLength=100,maxLineGap=10)
+    for x1,y1,x2,y2 in lines[0]:
+        cv2.line(img,(x1,y1),(x2,y2),(0,255,0),2)
+
+# Hough transformation for circles
+    circles = cv2.HoughCircles(img,cv2.HOUGH_GRADIENT,1,20,
+                                param1=50,param2=30,minRadius=0,maxRadius=0)
+
+# FOREGROUND/BACKGROUND SEPERATION
+    # wathershed and playing with erosion/dillution to seperate fore and background
+    # https://opencv-python-tutroals.readthedocs.io/en/latest/py_tutorials/py_imgproc/py_watershed/py_watershed.html
+
+    # Grab cut
+    mask, bgdModel, fgdModel = cv2.grabCut(img,mask,None,bgdModel,fgdModel,5,cv2.GC_INIT_WITH_MASK)
+    # https://opencv-python-tutroals.readthedocs.io/en/latest/py_tutorials/py_imgproc/py_grabcut/py_grabcut.html
+
+
+# Calculates the distance to the closest zero pixel for each pixel of the source image.
+dist_transform = cv2.distanceTransform(opening,cv2.DIST_L2|DIST_L1|DIST_C, maskSize=5)
+ret, sure_fg = cv2.threshold(dist_transform,0.7*dist_transform.max(),255,0)
+cv2.minMaxLoc(imgray,mask) -> min_val, max_val, min_loc, max_loc
+cv2.mean(im,mask) -> mean_val
 cv2.countNonZero(img)
 
 # IMAGE MANIPILATION
