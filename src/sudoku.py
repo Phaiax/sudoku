@@ -41,19 +41,30 @@ def improve(src):
     if cx.once('small'):
         cx['small'], scale = resize(src, long_edge)
 
-    # 3. Histogram Equalization
+    # 2. Histogram Equalization
     if cx.once('equi'):
         clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
         cx['equihist'] = clahe.apply(cx['small'])
+
+    # 3. Denoise and threshold
 
     #(h, h_chg) = cx.get_slider('h', on_trackbar_change, 10, 20)
     #(tw, tw_chg) = cx.get_slider('templateWindowSize', on_trackbar_change, 7, 20)
     #(sw, sw_chg) = cx.get_slider('searchWindowSize', on_trackbar_change, 21, 40)
     #if h_chg or tw_chg or sw_chg or invalid or cx.once('denoise'):
-    if invalid or cx.once('denoise'):
         #invalid = True
-        cx['denoise'] = cv2.fastNlMeansDenoising(cx['equihist'], h=16, templateWindowSize=7, searchWindowSize=10)
         #cx['denoise'] = cv2.fastNlMeansDenoising(cx['equihist'], h=h, templateWindowSize=tw, searchWindowSize=sw)
+    if invalid or cx.once('denoise'):
+        cx['denoise'] = cv2.fastNlMeansDenoising(cx['equihist'], h=16, templateWindowSize=7, searchWindowSize=10)
+
+    #(tr, tr_chg) = cx.get_slider('tr', on_trackbar_change, 10, 40)
+    #(cp, cp_chg) = cx.get_slider('C+50', on_trackbar_change, 50, 100)
+    #if invalid or tr_chg or cp_chg:
+    #    invalid = True
+        #cx['thresholded'] = cv2.adaptiveThreshold(cx['denoise'], 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, tr/2*2+1, C=cp-50)
+    if cx.once('threshold')
+        cx['thresholded'] = cv2.adaptiveThreshold(cx['denoise'], 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, C=20)
+
 
     print "Done"
     sys.stdout.flush()
