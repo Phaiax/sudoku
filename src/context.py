@@ -12,6 +12,7 @@ class Context:
         self.buffers = []
         self.buffers_by_name = {}
         self._once = []
+        self._store = {}
         cv2.namedWindow('image')
 
     def once(self, key):
@@ -19,6 +20,12 @@ class Context:
             return False
         self._once.append(key)
         return True
+
+    def store(self, key, data):
+        self._store[key] = data
+
+    def load(self, key):
+        return self._store[key]
 
     def redraw(self, *_):
         self._redraw = True
@@ -45,6 +52,8 @@ class Context:
     def __getitem__(self, key):
         if key in self.buffers_by_name:
             return self.buffers_by_name[key][0]
+        if key in self._store:
+            return self._store['key']
         return None
 
 

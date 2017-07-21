@@ -34,6 +34,17 @@ def resize(src, long_edge):
     h = int(h * scale)
     return (cv2.resize(src, dsize=(w,h)), scale)
 
+
+def match_hu(h1, h2, method=cv2.cv.CV_CONTOURS_MATCH_I2):
+    m1 = [ np.sign(h) * np.log(h) for h in h1]
+    m2 = [ np.sign(h) * np.log(h) for h in h2]
+    if method == cv2.cv.CV_CONTOURS_MATCH_I1:
+        return sum([ abs( 1/i1 - 1/i2 ) for i1, i2 in zip(m1, m2)])
+    if method == cv2.cv.CV_CONTOURS_MATCH_I2:
+        return sum([ abs( i1 - i2 ) for i1, i2 in zip(m1, m2)])
+    if method == cv2.cv.CV_CONTOURS_MATCH_I3:
+        return max([ abs( i1 - i2 ) / abs(i1) for i1, i2 in zip(m1, m2)])
+
 def improve(src):
     global cx
     invalid = False
@@ -71,16 +82,20 @@ def improve(src):
         cx['thresholded'] = cv2.adaptiveThreshold(cx['denoise'], 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 11, C=20)
 
 
+
     # ====================================================================== HOUGH LINE TRANSFORM
     # (a, a_chg) = cx.get_slider('minLineLength', on_trackbar_change, 100)
     # (b, b_chg) = cx.get_slider('maxLineGap', on_trackbar_change, 10)
     # (c, c_chg) = cx.get_slider('threshold', on_trackbar_change, 100)
     # if invalid or a_chg or b_chg or c_chg:
     #     invalid = True
-    #     lines = cv2.HoughLinesP(cx['thresholded'],1,np.pi/180,threshold=c,minLineLength=a,maxLineGap=b)
-    #     cx['lines'] = np.array(cx['small'])
-    #     for x1,y1,x2,y2 in lines[0]:
-    #         cv2.line(cx['lines'],(x1,y1),(x2,y2),255,1)
+        #lines = cv2.HoughLinesP(cx['thresholded'],1,np.pi/180,threshold=c,minLineLength=a,maxLineGap=b)
+    if invalid or cx.once('lines'):
+        lines = cv2.HoughLinesP(cx['thresholded'],1,np.pi/180,threshold=50,minLineLength=28,maxLineGap=8)
+        cx.store('lines', lines[0])
+        cx['lines'] = np.array(cx['small'])
+        for x1,y1,x2,y2 in lines[0]:
+            cv2.line(cx['lines'],(x1,y1),(x2,y2),255,1)
 
 
     # ============================================================================= CORNER HARRIS
@@ -98,6 +113,47 @@ def improve(src):
 
         # cx['out'][c2>(float(t)/100)*c2.max()]=255
 
+
+    # ============================================================= CONTOURS
+    (n, n_chg) = cx.get_slider('biggest n', on_trackbar_change, 10, 40)
+    if invalid or cx.once('contours') or n_chg:
+        thre_cp = np.array(cx['thresholded'])
+        contours, _ = cv2.findContours(thre_cp, mode=cv2.RETR_TREE, method=cv2.CHAIN_APPROX_SIMPLE)
+        with_area = [(c, cv2.contourArea(c)) for c in contours]
+        with_area.sort(key=lambda ca: ca[1])
+        contours_filtered = [c[0] for c in with_area[-n:]]
+
+
+
+        cx['contours'] = np.array(cx['small'])
+        cv2.drawContours(cx['contours'], contours=contours_filtered, contourIdx=-1, color=255, thickness=1)
+
+
+
+
+
+    # ============================================================= PRECALCULATE POSSIBLE CORNERS
+    if invalid or cx.once('precorner'):
+        # testing is invariant to rotation, only variant is angle of corner caused by
+        # perspective transformation
+        precorner = []
+        for angle in [45, 65, 75, 90]:
+            angle = (angle - 45.) / 180 * np.pi
+            im = np.zeros((8,8), np.uint8)
+            cv2.line(im,(4,4),(8,4),255,1)
+            cv2.line(im,(4,4),(int(4+8*np.sin(angle)),
+                               int(4+8*np.cos(angle))),255,1)
+
+            m = cv2.moments(im, binaryImage=True)
+            hu = cv2.HuMoments(m)
+
+            precorner.append({'img': im, 'humoments': hu})
+
+            #cx['pre'+str(angle)] = im
+
+        cx.store('precorner', precorner)
+
+
     # ====================================================================== BETTER CORNER HARRIS
     gray = np.float32(cx['thresholded'])
     # (a, a_chg) = cx.get_slider('minDistance', on_trackbar_change, 10, 250)
@@ -109,10 +165,59 @@ def improve(src):
     if invalid or cx.once('corners'):
         corners = cv2.goodFeaturesToTrack(gray, maxCorners=2000,qualityLevel=0.25,minDistance=3)
         corners = np.int0(corners)
+
+        # filter corners not on lines
+        filtered_corners = []
+        lines = cx.load('lines')
+        for c in corners:
+            for x1,y1,x2,y2 in lines:
+                x,y = c.ravel()
+                if x1 <= x and x <= x2 and y1 <= y and y <= y2:
+                    o = abs((y2-y1)*x-(x2-x1)*y+x2*y1-y2*x1)
+                    u = np.sqrt((y2-y1)**2 + (x2-x1)**2)
+                    d = float(o)/u
+                    if d < 5:
+                        filtered_corners.append(c)
+
+
         cx['out'] = np.array(src)
-        for i in corners:
+        for i in filtered_corners:
             x,y = i.ravel()
             cv2.circle(cx['out'],(int(x/scale),int(y/scale)),3,255,-1)
+
+
+
+        # i = 0
+        # rows, cols = cx['small'].shape
+        # bestcorners = []
+        # for corner in filtered_corners:
+        #     for blocksize in [4, 8, 16, 32]:
+        #         idf=str(blocksize)+str(i)
+        #         x,y = corner.ravel()
+        #         if (x < blocksize) or (y < blocksize) or (x + blocksize >= cols) or (y+blocksize >= rows):
+        #             continue
+        #         else:
+        #             print "x,y", (x,y),
+        #             print "x range", (x-blocksize,x+blocksize),
+        #             print "y range", (y-blocksize,y+blocksize),
+        #             print "w, h", (cols,rows),
+        #             print "ok?", (x < blocksize)
+        #             sys.stdout.flush()
+        #             sys.stdout.flush()
+        #             sys.stdout.flush()
+        #             view = cx['thresholded'][y-blocksize:y+blocksize, x-blocksize:x+blocksize]
+        #             r = cv2.resize(view, (8, 8))
+        #             moments = cv2.moments(r, binaryImage=True)
+        #             hu = cv2.HuMoments(moments)
+        #             match = max([ match_hu(precorner['humoments'], hu) for precorner in cx.load('precorner')])
+        #             bestcorners.append((match, corner, r, idf))
+        #     i += 1
+
+        # bestcorners.sort(key=lambda c: c[0])
+        # bestcorners = bestcorners[-10:]
+        # for m,c,r,idf in bestcorners:
+        #     cx['v1'+idf] = r
+
 
 
     print "Done"

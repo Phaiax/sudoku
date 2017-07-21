@@ -66,10 +66,10 @@ img[:,:,2] = 0
 
 # DRAW
 # ===============================================
-img = cv2.line(img,(0,0),(511,511),(255,0,0),5)
-img = cv2.rectangle(img,(384,0),(510,128),(0,255,0),3)
-img = cv2.circle(img, center, radius, color[, thickness[, lineType[, shift]]]) -> None
-img = cv2.ellipse(img,(256,256),(100,50),0,0,180,255,-1)
+cv2.line(img,(0,0),(511,511),(255,0,0),5)
+cv2.rectangle(img,(384,0),(510,128),(0,255,0),3)
+cv2.circle(img, center, radius, color[, thickness[, lineType[, shift]]]) -> None
+cv2.ellipse(img,(256,256),(100,50),0,0,180,255,-1)
 # poly
 pts = np.array([[10,5],[20,30],[70,20],[50,10]], np.int32)
 pts = pts.reshape((-1,1,2))
