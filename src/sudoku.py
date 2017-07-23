@@ -3,7 +3,7 @@ import cv2
 from matplotlib import pyplot as plt
 import sys
 from context import Context
-
+from itertools import product
 
 # GLOBALS
 cx = Context()
@@ -84,12 +84,12 @@ def improve(src):
 
 
     # ====================================================================== HOUGH LINE TRANSFORM
-    # (a, a_chg) = cx.get_slider('minLineLength', on_trackbar_change, 100)
-    # (b, b_chg) = cx.get_slider('maxLineGap', on_trackbar_change, 10)
-    # (c, c_chg) = cx.get_slider('threshold', on_trackbar_change, 100)
+    # (a, a_chg) = cx.get_slider('minLineLength', on_trackbar_change, 28)
+    # (b, b_chg) = cx.get_slider('maxLineGap', on_trackbar_change, 8)
+    # (c, c_chg) = cx.get_slider('threshold', on_trackbar_change, 50)
     # if invalid or a_chg or b_chg or c_chg:
     #     invalid = True
-        #lines = cv2.HoughLinesP(cx['thresholded'],1,np.pi/180,threshold=c,minLineLength=a,maxLineGap=b)
+    #     lines = cv2.HoughLinesP(cx['thresholded'],1,np.pi/180,threshold=c,minLineLength=a,maxLineGap=b)
     if invalid or cx.once('lines'):
         lines = cv2.HoughLinesP(cx['thresholded'],1,np.pi/180,threshold=50,minLineLength=28,maxLineGap=8)
         cx.store('lines', lines[0])
@@ -115,114 +115,128 @@ def improve(src):
 
 
     # ============================================================= CONTOURS
-    (n, n_chg) = cx.get_slider('biggest n', on_trackbar_change, 10, 40)
+    (n, n_chg) = cx.get_slider('biggest n', on_trackbar_change, 6, 40)
     if invalid or cx.once('contours') or n_chg:
         thre_cp = np.array(cx['thresholded'])
         contours, _ = cv2.findContours(thre_cp, mode=cv2.RETR_TREE, method=cv2.CHAIN_APPROX_SIMPLE)
         with_area = [(c, cv2.contourArea(c)) for c in contours]
         with_area.sort(key=lambda ca: ca[1])
-        contours_filtered = [c[0] for c in with_area[-n:]]
-
+        contours_filtered = [cv2.convexHull(c[0]) for c in with_area[-n:]]
+        epsilon = 5
+        contours_filtered = [cv2.approxPolyDP(c,epsilon,closed=True) for c in contours_filtered]
+        contours_filtered = np.array([c for c in contours_filtered if len(c) == 4])
 
 
         cx['contours'] = np.array(cx['small'])
         cv2.drawContours(cx['contours'], contours=contours_filtered, contourIdx=-1, color=255, thickness=1)
 
 
+        # for c in contours_filtered:
+        #     c.shape = (4,2)
+        #     x,y = c[0]
+        #     cv2.circle(cx['contours'],(int(x),int(y)),4,100,-1)
+        #     x,y = c[1]
+        #     cv2.circle(cx['contours'],(int(x),int(y)),4,150,-1)
+        #     x,y = c[2]
+        #     cv2.circle(cx['contours'],(int(x),int(y)),4,200,-1)
+        #     x,y = c[3]
+        #     cv2.circle(cx['contours'],(int(x),int(y)),4,255,-1)
+
+        #     break
+
+
+    # ============================================================= CANDIDATES
+    if cx.once('math'):
+        # for each contour interpret it as the outer square and check how many inner squares are found
+        base = np.array([ [1    ,0    ,0    ,0    ],
+                          [0.666,0.333,0    ,0    ],
+                          [0.333,0.666,0    ,0    ],
+                          [0    ,1    ,0    ,0    ],
+                          [0.666,0    ,0    ,0.333],
+                          [0.444,0.222,0.111,0.222],
+                          [0.222,0.444,0.222,0.111],
+                          [0    ,0.666,0.333,0    ],
+                          [0.333,0    ,0    ,0.666],
+                          [0.222,0.111,0.222,0.444],
+                          [0.111,0.222,0.444,0.222],
+                          [0    ,0.333,0.666,0    ],
+                          [0    ,0    ,0    ,1    ],
+                          [0    ,0    ,0.333,0.666],
+                          [0    ,0    ,0.666,0.333],
+                          [0    ,0    ,1    ,0    ]
+                        ])
+
+        # the `base.dot([pos_0, pos_3, pos_12, pos_15])` results in an array with
+        # the points in the square belonging to the following indizes
+        # 0  1  2  3
+        # 4  5  6  7
+        # 8  9  10 11
+        # 12 13 14 15
+        # squares = [ [0,1,4,5], [1,2,5,6], [2,3,6,7],
+        #             [4,5,8,9], [5,6,9,10], [6,7,10,11],
+        #             [8,9,12,13], [9,10,13,14], [10,11,14,15] ]
+
+        # # make array to answer the question: If point number `i` is a corner of an inner contour,
+        # # which points of `corners` must the other points of the inner contour be?
+        # ask = []
+        # for i in range(0, 16):
+        #     ask_i = []
+        #     for square in squares:
+        #         if i in square:
+        #             remaining_points = list(square)
+        #             remaining_points.remove(i)
+        #             ask_i.append(remaining_points)
+        #     ask.append(ask_i)
+        # # Test
+        # assert ask[0] == [[1,4,5]]
+        # assert ask[1] == [[0,4,5], [2,5,6]]
+        # assert ask[5] == [[0,1,4], [1,2,6], [4,8,9], [6,9,10]]
+
+    if invalid or cx.once('find_sudokus'):
+        sudokus = []
+
+        for outer in contours_filtered: # N
+            outer.shape = (4,2)
+            # make all 16 possible corners
+            corners = base.dot( outer )
+            # calculate allowed error for inner square points (1/6 of closest corner points)
+            outer_next = np.array([outer[1], outer[2], outer[3], outer[0]])
+            dists = np.sqrt(np.sum((outer - outer_next)**2, axis=1))
+            max_err = 1./6 * np.min(dists)
+
+            number_of_valid_inner_squares = 0
+
+            # compare all contours if they fit to the possible corners (KDTREE?)
+            for inner in contours_filtered: # N*N
+                inner.shape = (4,2)
+                if np.array_equal(inner, outer):
+                    continue
+                # compare each point of inner with each `corners`
+                matches = 0
+                for inner_pt, c_pt in product(inner, corners): # N*N*4*16 = 6400 if N = 10
+                    dist = np.sum(np.abs(inner_pt - c_pt))
+                    if dist < max_err:
+                        matches += 1
+                        if matches == 4:
+                            number_of_valid_inner_squares += 1
+                            break
 
 
 
-    # ============================================================= PRECALCULATE POSSIBLE CORNERS
-    if invalid or cx.once('precorner'):
-        # testing is invariant to rotation, only variant is angle of corner caused by
-        # perspective transformation
-        precorner = []
-        for angle in [45, 65, 75, 90]:
-            angle = (angle - 45.) / 180 * np.pi
-            im = np.zeros((8,8), np.uint8)
-            cv2.line(im,(4,4),(8,4),255,1)
-            cv2.line(im,(4,4),(int(4+8*np.sin(angle)),
-                               int(4+8*np.cos(angle))),255,1)
-
-            m = cv2.moments(im, binaryImage=True)
-            hu = cv2.HuMoments(m)
-
-            precorner.append({'img': im, 'humoments': hu})
-
-            #cx['pre'+str(angle)] = im
-
-        cx.store('precorner', precorner)
-
-
-    # ====================================================================== BETTER CORNER HARRIS
-    gray = np.float32(cx['thresholded'])
-    # (a, a_chg) = cx.get_slider('minDistance', on_trackbar_change, 10, 250)
-    # (b, b_chg) = cx.get_slider('qualityLevel', on_trackbar_change, 1, 100)
-    # (c, c_chg) = cx.get_slider('maxCorners', on_trackbar_change, 25, 255)
-    # if invalid or a_chg or b_chg or c_chg or t_chg:
-    #     invalid = True
-    #     corners = cv2.goodFeaturesToTrack(gray, maxCorners=c*10,qualityLevel=float(b)/100,minDistance=a)
-    if invalid or cx.once('corners'):
-        corners = cv2.goodFeaturesToTrack(gray, maxCorners=2000,qualityLevel=0.25,minDistance=3)
-        corners = np.int0(corners)
-
-        # filter corners not on lines
-        filtered_corners = []
-        lines = cx.load('lines')
-        for c in corners:
-            for x1,y1,x2,y2 in lines:
-                x,y = c.ravel()
-                if x1 <= x and x <= x2 and y1 <= y and y <= y2:
-                    o = abs((y2-y1)*x-(x2-x1)*y+x2*y1-y2*x1)
-                    u = np.sqrt((y2-y1)**2 + (x2-x1)**2)
-                    d = float(o)/u
-                    if d < 5:
-                        filtered_corners.append(c)
-
-
-        cx['out'] = np.array(src)
-        for i in filtered_corners:
-            x,y = i.ravel()
-            cv2.circle(cx['out'],(int(x/scale),int(y/scale)),3,255,-1)
+            #print "novis", number_of_valid_inner_squares
+            if number_of_valid_inner_squares >= 1:
+                sudokus.append(outer)
+                for x,y in corners:
+                    cv2.circle(cx['contours'],(int(x),int(y)),2,0,-1)
 
 
 
-        # i = 0
-        # rows, cols = cx['small'].shape
-        # bestcorners = []
-        # for corner in filtered_corners:
-        #     for blocksize in [4, 8, 16, 32]:
-        #         idf=str(blocksize)+str(i)
-        #         x,y = corner.ravel()
-        #         if (x < blocksize) or (y < blocksize) or (x + blocksize >= cols) or (y+blocksize >= rows):
-        #             continue
-        #         else:
-        #             print "x,y", (x,y),
-        #             print "x range", (x-blocksize,x+blocksize),
-        #             print "y range", (y-blocksize,y+blocksize),
-        #             print "w, h", (cols,rows),
-        #             print "ok?", (x < blocksize)
-        #             sys.stdout.flush()
-        #             sys.stdout.flush()
-        #             sys.stdout.flush()
-        #             view = cx['thresholded'][y-blocksize:y+blocksize, x-blocksize:x+blocksize]
-        #             r = cv2.resize(view, (8, 8))
-        #             moments = cv2.moments(r, binaryImage=True)
-        #             hu = cv2.HuMoments(moments)
-        #             match = max([ match_hu(precorner['humoments'], hu) for precorner in cx.load('precorner')])
-        #             bestcorners.append((match, corner, r, idf))
-        #     i += 1
 
-        # bestcorners.sort(key=lambda c: c[0])
-        # bestcorners = bestcorners[-10:]
-        # for m,c,r,idf in bestcorners:
-        #     cx['v1'+idf] = r
-
-
-
+        # if a big square has at least one correct inner square, add it to list of squares
     print "Done"
     sys.stdout.flush()
     return
+
 
 
 img = load_image(path='assets/test/s1.jpg', w=550)
