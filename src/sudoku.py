@@ -45,6 +45,11 @@ def match_hu(h1, h2, method=cv2.cv.CV_CONTOURS_MATCH_I2):
     if method == cv2.cv.CV_CONTOURS_MATCH_I3:
         return max([ abs( i1 - i2 ) / abs(i1) for i1, i2 in zip(m1, m2)])
 
+
+w_sudoku = 150
+font = cv2.FONT_HERSHEY_SIMPLEX
+font_thickness = 1
+
 def improve(src):
     global cx
     invalid = cx.once('invalid')
@@ -155,7 +160,127 @@ def improve(src):
                 for x,y in corners:
                     cv2.circle(cx['contours'],(int(x),int(y)),2,0,-1)
 
+    if invalid and len(sudokus) > 0:
+        pts1 = np.float32(sudokus[0]* (1./scale))
+        w = w_sudoku
+        pts2 = np.float32([[0,0],[w,0],[w,w],[0,w]])
+        pts2 = np.float32([[w,w],[0,w],[0,0],[w,0]])
+        M = cv2.getPerspectiveTransform(pts1,pts2)
+        cx['s1_raw'] = cv2.warpPerspective(src, M, dsize=(w,w), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=255)
 
+    #(cl, cl_chg) = cx.get_slider('clipLimit', on_trackbar_change, 20, 100)
+    #(tgs, tgs_chg) = cx.get_slider('tileGridSize', on_trackbar_change, 8, 30)
+    #if invalid or cl_chg or tgs_chg:
+    #    invalid = True
+    #    if tgs == 0: tgs = 1
+    #    clahe = cv2.createCLAHE(clipLimit=float(cl)/10, tileGridSize=(tgs,tgs))
+    if invalid:
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
+        cx['s1_equihist'] = clahe.apply(cx['s1_raw'])
+        sudoku = cv2.fastNlMeansDenoising(cx['s1_equihist'], h=16,
+            templateWindowSize=7, searchWindowSize=10)
+        sudoku = clahe.apply(sudoku)
+
+        cx['s1'] = sudoku
+
+
+    # delete borders
+    if invalid:
+        cx['s1_thresholded'] = cv2.adaptiveThreshold(cx['s1'], 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 11, C=20)
+        thre_cp = np.array(cx['s1_thresholded'])
+        contours, _ = cv2.findContours(thre_cp, mode=cv2.RETR_TREE, method=cv2.CHAIN_APPROX_SIMPLE)
+
+        outer_contours = []
+        number_contours = []
+        area_threshold_max = (w_sudoku / 9)**2
+        area_threshold_min = (w_sudoku / 9)**2 / 50
+        for c in contours:
+            x,y,w,h = cv2.boundingRect(c)
+            aspect_ratio = float(w)/h
+            area = w*h
+            #print "ratio", aspect_ratio, "area", area
+            if aspect_ratio > 3 or area > area_threshold_max or area < area_threshold_min:
+                outer_contours.append(c)
+            elif aspect_ratio < 1 and aspect_ratio > 0.3:
+                number_contours.append(c)
+        cx.store('number_contours', number_contours)
+
+
+        #cv2.drawContours(cx['s1_thresholded'], contours=outer_contours, contourIdx=-1, color=0, thickness=1)
+        cx['s1_cleared'] = np.array(cx['s1_thresholded'])
+        cv2.fillPoly(cx['s1_cleared'], pts=outer_contours, color=0)
+        cv2.line(cx['s1_cleared'], pt1=(0,0), pt2=(0,w_sudoku), color=0, thickness=2)
+        cv2.line(cx['s1_cleared'], pt1=(0,0), pt2=(w_sudoku,0), color=0, thickness=2)
+        cv2.line(cx['s1_cleared'], pt1=(w_sudoku,0), pt2=(w_sudoku,w_sudoku), color=0, thickness=2)
+        cv2.line(cx['s1_cleared'], pt1=(0,w_sudoku), pt2=(w_sudoku,w_sudoku), color=0, thickness=2)
+
+        #cx['s1_contours'] = np.array(cx['s1'])
+        cx['s1_numbers'] = np.zeros(cx['s1'].shape, np.uint8)
+        cv2.drawContours(cx['s1_numbers'], contours=number_contours, contourIdx=-1, color=255, thickness=1)
+
+    # find deformation information
+    # maybe implement later, for now it is good enough
+
+    # find occupied spaces
+    if invalid:
+        d = w_sudoku / 9
+        stat = {'max_h': 1, 'min_h': d, 'sum_h': 0}
+        numbers = []
+        for n in cx.load('number_contours'):
+            x,y,w,h = cv2.boundingRect(n)
+            center_x = x + float(w)/2
+            center_y = y + float(h)/2
+            r = np.round(center_x / d)
+            c = np.round(center_y / d)
+            cv2.circle(cx['s1'],(int(d*r-d/3),int(d*c-d/3)),d/3,0,-1)
+            numbers.append({
+                'r': r, # one based
+                'c': c,
+                'center_x': center_x,
+                'center_y': center_y,
+                'w': w,
+                'h': h
+                })
+            stat['max_h'] = max(h, stat['max_h'])
+            stat['min_h'] = min(h, stat['min_h'])
+            stat['sum_h'] += h
+        stat['avg_h'] = stat['sum_h'] / len(numbers)
+        cx.store('font_contour_h', stat['avg_h'])
+        print stat
+
+    if cx.once('default_font_scale'):
+        retval, baseline = cv2.getTextSize('8',
+            fontFace=font,
+            fontScale=1,
+            thickness=font_thickness)
+        cx.store('default_font_scale', retval)
+        print "font", retval, baseline
+
+    if cx.once('templates') or (cx.load('font_contour_h') != cx.load('used_font_contour_h')):
+        cx.store('used_font_contour_h', cx.load('font_contour_h'))
+        w = w_sudoku / 9
+        fontScale = float(cx.load('font_contour_h')) / cx.load('default_font_scale')[1]
+        textSize, baseline = cv2.getTextSize('8', font, fontScale, font_thickness);
+        tmplsize = (textSize[1]+5,textSize[0]+2)
+        baseline += font_thickness;
+        x = 1
+        y = textSize[1] + 2
+
+
+        nbrs = []
+        for i in range(1,10):
+            tmpl = np.zeros(tmplsize, np.uint8)
+
+            cv2.putText(tmpl,str(i),(x,y),
+                fontFace=font,
+                fontScale=fontScale,
+                color=255,
+                thickness=font_thickness,
+                lineType=cv2.CV_AA)
+
+            nbrs.append(tmpl)
+
+    # Rotate irr!
 
 
     print "Done"
