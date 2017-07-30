@@ -213,6 +213,31 @@ def improve(src):
 
     # ============================================= Remove Borders and Noise, Get Number Contours
 
+    d = w_sudoku / 9
+    def contour_meta(n):
+        x,y,w,h = cv2.boundingRect(n)
+        area = w*h
+        aspect_ratio = float(w)/h
+        center_x = x + float(w)/2
+        center_y = y + float(h)/2
+        c = int(np.round(center_x / d)) - 1 # 0 based
+        r = int(np.round(center_y / d)) - 1 # 0 based
+        return {
+                'r': r, # one based
+                'c': c,
+                'x': x,
+                'y': y,
+                'center_x': center_x,
+                'center_y': center_y,
+                'w': w,
+                'h': h,
+                'contour': n,
+                'inners': [],
+                'num': 0,
+                'area': area,
+                'aspect_ratio': aspect_ratio
+                }
+
     if invalid:
         cx['s1_thresholded'] = cv2.adaptiveThreshold(cx['s1'], 255,
             cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 11, C=20)
@@ -220,24 +245,35 @@ def improve(src):
         contours, _ = cv2.findContours(thre_cp, mode=cv2.RETR_TREE,
             method=cv2.CHAIN_APPROX_SIMPLE)
 
+        cx['s1_numbers_unfiltered'] = np.zeros(cx['s1'].shape, np.uint8)
+        cv2.drawContours(cx['s1_numbers_unfiltered'], contours=contours, contourIdx=-1, color=255, thickness=1)
+
+
         outer_contours = []
+        mini_contours = []
         number_contours = []
         area_threshold_max = (w_sudoku / 9)**2
         area_threshold_min = (w_sudoku / 9)**2 / 50
         for c in contours:
-            x,y,w,h = cv2.boundingRect(c)
-            aspect_ratio = float(w)/h
-            area = w*h
-            if aspect_ratio > 3 \
-                or area > area_threshold_max \
-                or area < area_threshold_min:
+            c = contour_meta(c)
+
+            if c['aspect_ratio'] > 3 \
+                or c['area'] > area_threshold_max \
+                or c['area'] < area_threshold_min:
                 outer_contours.append(c)
-            elif aspect_ratio < 1 and aspect_ratio > 0.3:
+            elif c['aspect_ratio'] < 1 and c['aspect_ratio'] > 0.3:
                 number_contours.append(c)
+            elif c['aspect_ratio'] < 1.5 and c['aspect_ratio'] > 0.5:
+                mini_contours.append(c)
+
+
+
         cx.store('number_contours', number_contours)
+        cx.store('mini_contours', mini_contours)
 
         cx['s1_cleared'] = np.array(cx['s1_thresholded'])
-        cv2.fillPoly(cx['s1_cleared'], pts=outer_contours, color=0)
+
+        cv2.fillPoly(cx['s1_cleared'], pts=[c['contour'] for c in outer_contours], color=0)
         cv2.line(cx['s1_cleared'], pt1=(0,0), pt2=(0,w_sudoku),
                  color=0, thickness=2)
         cv2.line(cx['s1_cleared'], pt1=(0,0), pt2=(w_sudoku,0),
@@ -247,9 +283,8 @@ def improve(src):
         cv2.line(cx['s1_cleared'], pt1=(0,w_sudoku), pt2=(w_sudoku,w_sudoku),
                  color=0, thickness=2)
 
-        #cx['s1_contours'] = np.array(cx['s1'])
-        #cx['s1_numbers'] = np.zeros(cx['s1'].shape, np.uint8)
-        #cv2.drawContours(cx['s1_numbers'], contours=number_contours, contourIdx=-1, color=255, thickness=1)
+        cx['s1_numbers0'] = np.zeros(cx['s1'].shape, np.uint8)
+        cv2.drawContours(cx['s1_numbers0'], contours=[ c['contour'] for c in mini_contours ], contourIdx=-1, color=255, thickness=1)
 
 
     # ====================================================================== Advanced Deformation
@@ -263,54 +298,97 @@ def improve(src):
     # ========================================================= Position and Size for Each Number
 
     if invalid:
-        d = w_sudoku / 9
         stat = {'max_h': 1, 'min_h': d, 'sum_h': 0}
         numbers = {}
         for n in cx.load('number_contours'):
-            x,y,w,h = cv2.boundingRect(n)
-            center_x = x + float(w)/2
-            center_y = y + float(h)/2
-            c = int(np.round(center_x / d)) - 1 # 0 based
-            r = int(np.round(center_y / d)) - 1 # 0 based
-            cv2.circle(cx['s1'],(int(d*(c+1)-d/3),int(d*(r+1)-d/3)),d/3,0,-1)
-            cv2.circle(cx['s1'],(int(center_x),int(center_y)),d/5,50,-1)
 
-            n_new = {
-                'r': r, # one based
-                'c': c,
-                'x': x,
-                'y': y,
-                'center_x': center_x,
-                'center_y': center_y,
-                'w': w,
-                'h': h,
-                'contour': n,
-                'inners': [],
-                'num': 0
-                }
+            cv2.circle(cx['s1'],(int(d*(n['c']+1)-d/3),int(d*(n['r']+1)-d/3)),d/3,0,-1)
+            cv2.circle(cx['s1'],(int(n['center_x']),int(n['center_y'])),d/5,50,-1)
 
+            r,c = (n['r'], n['c'])
             # remove duplicates, take largest
             if (r,c) in numbers:
-                print "duplicate at ", (r,c)
+                #print "duplicate at ", (r,c)
                 prev = numbers[(r,c)]
-                if prev['h'] * prev['w'] > w * h:
-                    prev['inners'].append(n_new)
+                if prev['h'] * prev['w'] > n['w'] * n['h']:
+                    prev['inners'].append(n)
                     continue
                 else:
-                    n_new.append(prev)
+                    n.append(prev)
                     stat['sum_h'] -= prev['h']
 
-            numbers[(r,c)] = n_new
-            stat['max_h'] = max(h, stat['max_h'])
-            stat['min_h'] = min(h, stat['min_h'])
-            stat['sum_h'] += h
+            numbers[(r,c)] = n
+            stat['max_h'] = max(n['h'], stat['max_h'])
+            stat['min_h'] = min(n['h'], stat['min_h'])
+            stat['sum_h'] += n['h']
 
         stat['avg_h'] = stat['sum_h'] / len(numbers)
         cx.store('font_contour_h', stat['avg_h'])
         cx.store('numbers', numbers)
         print stat
 
+    # ========================================================= Merge with mini contours
+    if invalid:
+        numbers = cx.load('numbers')
+        for mini in cx.load('mini_contours'):
+            if (mini['r'], mini['c']) in numbers:
+                number = numbers[(mini['r'], mini['c'])]
+                # print "same same", (number['x'], "<=", mini['x']), (number['y'], "<=", mini['y']), \
+                #         (number['x'] + number['w'], '>=', mini['x'] + mini['w']), \
+                #         (number['y'] + number['h'], '>=', mini['y'] + mini['h'])
+                if number['x'] <= mini['x'] \
+                    and number['y'] <= mini['y'] \
+                    and number['x'] + number['w'] >= mini['x'] + mini['w'] \
+                    and number['y'] + number['h'] >= mini['y'] + mini['h']:
+                    number['inners'].append(mini)
+                    # print "app"
 
+        cx['s1_numbers'] = np.zeros(cx['s1'].shape, np.uint8)
+        for _, c in numbers.items():
+            cv2.drawContours(cx['s1_numbers'], contours=[c['contour']], contourIdx=-1, color=255, thickness=1)
+            for i in c['inners']:
+                cv2.drawContours(cx['s1_numbers'], contours=[i['contour']], contourIdx=-1, color=255, thickness=1)
+
+
+    # ==================================================================  Get numbers
+    # 'contour': array([[[54, 24]], [[54, 27]], [[55, 28]], [[55, 29]],
+    #                  [[54, 30]], [[54, 32]], [[55, 32]], [[56, 33]], [[58, 33]], [[59, 32]],
+    #                     [[59, 29]], [[58, 28]], [[59, 27]], [[59, 25]], [[58, 24]]], dtype=int32),
+    # 'center_y': 29.0,
+    # 'num': 0,
+    # 'c': 3,
+    # 'h': 10,
+    # 'center_x': 57.0,
+    # 'r': 1,
+    # 'w': 6,
+    # 'y': 24,
+    # 'x': 54
+    # 'inners':   'num': 0,
+    #             'contour': array([[[55, 29]], [[56, 28]], [[57, 28]],
+    #                                 [[58, 29]], [[58, 31]], [[57, 32]],
+    #                                 [[56, 32]], [[55, 31]]], dtype=int32),
+    #             'center_y': 30.5,
+    #             'c': 3,
+    #             'inners': [],
+    #             'h': 5,
+    #             'center_x': 57.0,
+    #             'r': 1,
+    #             'w': 4,
+    #             'y': 28,
+    #             'x': 55}],
+
+    if invalid:
+        for pos, n in cx.load('numbers').items():
+            if len(n['inners']) == 2:
+                n['num'] = 8
+            if len(n['inners']) == 1:
+                i = n['inners'][0]
+                # if pos == (4,5):
+                #     print (i['y'] + i['h'], '<=', n['y'] + n['h']/2), (i['y'], '>=', n['y'] + n['h']/2)
+                if i['center_y'] <= n['center_y']:
+                    n['num'] = 9
+                if i['center_y'] > n['center_y']:
+                    n['num'] = 6
 
 
 
@@ -353,7 +431,8 @@ def improve(src):
         for r in range(0,9):
             for c in range(0,9):
                 if parsed[r,c] != ground_truth[r,c]:
-                    print "Err in r", r, "c", c, " Got ", parsed[r,c], "instead of", ground_truth[r,c]
+                    pass
+                    #print "Err in r", r, "c", c, " Got ", parsed[r,c], "instead of", ground_truth[r,c]
 
 
 
