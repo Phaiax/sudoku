@@ -285,7 +285,8 @@ def improve(src):
                 'w': w,
                 'h': h,
                 'contour': n,
-                'inners': []
+                'inners': [],
+                'num': 0
                 }
 
             # remove duplicates, take largest
@@ -309,127 +310,7 @@ def improve(src):
         cx.store('numbers', numbers)
         print stat
 
-    # ================================================================= OpenCv Font Default Scale
 
-    if cx.once('default_font_scale'):
-        retval, baseline = cv2.getTextSize('8',
-            fontFace=font,
-            fontScale=1,
-            thickness=font_thickness)
-        cx.store('default_font_scale', retval)
-
-    # ==================================================================  Create Number Templates
-
-    s, s_chg = cx.get_slider('s', on_trackbar_change, 10, 20)
-    if cx.once('templates') or (cx.load('font_contour_h') != cx.load('used_font_contour_h')) or s_chg:
-        invalid = True
-        cx.store('used_font_contour_h', cx.load('font_contour_h'))
-        fontScale = float(cx.load('font_contour_h')) / cx.load('default_font_scale')[1]
-        fontScale *= float(s)/10
-        textSize, baseline = cv2.getTextSize('8', font, fontScale, font_thickness);
-        tmplsize = (textSize[1]+baseline,textSize[0]+2)
-        x, y = (1, textSize[1] + 2)
-
-        nbrs = []
-        for i in range(1,10):
-            tmpl = np.zeros(tmplsize, np.uint8)
-
-            cv2.putText(tmpl,str(i),(x,y),
-                fontFace=font,
-                fontScale=fontScale,
-                color=255,
-                thickness=font_thickness,
-                lineType=cv2.CV_AA)
-
-            tmpl = np.array(tmpl[2:tmplsize[0]-2, 2:tmplsize[1]-2])
-            nbrs.append(tmpl)
-        cx['s'] = nbrs[-1]
-        cx.store('templates', nbrs)
-        cx.store('template_size', (tmplsize[1], tmplsize[0])) # w,h
-
-    if cx.once('freesanstemplates') or (cx.load('font_contour_h') != cx.load('used_font_contour_h_freesans')):
-        cx.store('used_font_contour_h_freesans', cx.load('font_contour_h'))
-
-        freesans = cv2.imread("assets/templates/FreeSans.png", cv2.IMREAD_GRAYSCALE)
-        h = cx.load('font_contour_h') + 2
-        fontScale = float(h) / freesans.shape[0]
-
-        freesans = 255 - freesans
-        print freesans.shape
-        letters = []
-        letters.append(freesans[:, 3:18])
-        letters.append(freesans[:, 30:47])
-        letters.append(freesans[:, 59:76])
-        letters.append(freesans[:, 88:104])
-        letters.append(freesans[:, 116:133])
-        letters.append(freesans[:, 145:162])
-        letters.append(freesans[:, 174:191])
-        letters.append(freesans[:, 202:219])
-        letters.append(freesans[:, 231:248])
-
-        letters_scaled = []
-        for i, l in enumerate(letters):
-            #cx['l'+str(i)] = cv2.resize(l, (l.shape[1]*2, l.shape[0]*2))
-            letters_scaled.append(cv2.resize(l, (int(fontScale*l.shape[1]), int(h))))
-        cx.store('freesans', letters_scaled)
-
-        freesansbold = cv2.imread("assets/templates/FreeSansBold.png", cv2.IMREAD_GRAYSCALE)
-        freesansbold = 255 - freesansbold
-        print freesansbold.shape
-        letters = []
-        letters.append(freesansbold[:, 0:16])
-        letters.append(freesansbold[:, 29:48])
-        letters.append(freesansbold[:, 59:78])
-        letters.append(freesansbold[:, 90:108])
-        letters.append(freesansbold[:, 119:137])
-        letters.append(freesansbold[:, 148:167])
-        letters.append(freesansbold[:, 177:196])
-        letters.append(freesansbold[:, 208:226])
-        letters.append(freesansbold[:, 237:255])
-        letters_scaled = []
-        for i, l in enumerate(letters):
-            #cx['lb'+str(i)] = cv2.resize(l, (l.shape[1]*2, l.shape[0]*2))
-            letters_scaled.append(cv2.resize(l, (int(fontScale*l.shape[1]), int(h))))
-        cx.store('freesansbold', letters_scaled)
-
-    # ==================================================================  Match Number Templates
-
-    d, d_chg = cx.get_slider('d', on_trackbar_change, 3, 20)
-    if invalid or d_chg:
-        invalid = True
-        s = cx['s1_cleared']
-        tmplsize = cx.load('template_size')
-        templates =cx.load('freesansbold')
-        for (r,c), n in cx.load('numbers').iteritems():
-            #methods = cv2.TM_CCOEFF | cv2.TM_CCOEFF_NORMED | cv2.TM_CCORR |
-            #            cv2.TM_CCORR_NORMED | cv2.TM_SQDIFF | cv2.TM_SQDIFF_NORMED
-            x, y = (n['x'], n['y'])
-            w, h = (n['w'], n['h'])
-            if tmplsize[0] > w:
-                x -= (tmplsize[0] - w)/2
-                w = tmplsize[0]
-            if tmplsize[1] > h:
-                y -= (tmplsize[1] - h)/2
-                h = tmplsize[1]
-            if x + w > s.shape[1]: x = s.shape[1] - w
-            if y + h > s.shape[0]: y = s.shape[0] - h
-            print n, w, h, tmplsize
-            view = s[y-d:y+h+d, x-d:x+w+d]
-            n['view'] = view
-
-
-            probabilities = []
-            n['matchmap'] = []
-            for i, tmpl in enumerate(templates):
-                i += 1 # sudoku number
-                res = cv2.matchTemplate(view,tmpl,method=cv2.TM_CCORR)
-                min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(res)
-                probabilities.append((i, max_val))
-                n['matchmap'].append((res, min_val, max_val, min_loc, max_loc))
-                #print "r,c:", (n['r'], n['c']), "i", i+1, "->", (min_val, max_val), (min_loc, max_loc)
-            probabilities.sort(key=lambda (i,max_val): max_val, reverse=True)
-            n['num'] = probabilities[0][0]
-            n['max_match_val'] = probabilities[0][1]
 
 
 
@@ -468,41 +349,11 @@ def improve(src):
             [0, 5, 0, 0, 0, 8, 0, 3, 1]
             ])
         parsed = cx.load('parsed')
-        tmplsize = cx.load('template_size')
         numbers = cx.load('numbers')
-        templates =cx.load('freesansbold')
         for r in range(0,9):
             for c in range(0,9):
                 if parsed[r,c] != ground_truth[r,c]:
                     print "Err in r", r, "c", c, " Got ", parsed[r,c], "instead of", ground_truth[r,c]
-                    n = numbers[(r,c)]
-                    orig = n['view']
-                    w = orig.shape[0] + 9 * tmplsize[0] + 60
-                    h = orig.shape[1] + tmplsize[1] * 2 + 30
-                    overview = np.ones((h, w), np.uint8) * 255
-                    overview[0:orig.shape[0], 0:orig.shape[1]] = orig
-                    x = orig.shape[1] + 1
-                    for i in range(0, 9):
-                        (matchmap, _, max_val, _, _) =  n['matchmap'][i]
-                        template = templates[i]
-                        y = template.shape[0]
-                        overview[0:y, x:x+template.shape[1]] = template
-                        y += 5
-                        overview[y:y+matchmap.shape[0], x:x+matchmap.shape[1]] = matchmap / (max_val / 255)
-                        y += 5 + matchmap.shape[0]
-                        overview[y:y+matchmap.shape[0], x:x+matchmap.shape[1]] = 20.*np.log(np.float32(matchmap))
-                        y += 5 + matchmap.shape[0]
-                        overview[y:y+matchmap.shape[0], x:x+matchmap.shape[1]] = matchmap / (n['max_match_val'] / 255)
-
-                        x += template.shape[1] + 10
-
-                    cv2.putText(overview, str(parsed[r,c]),(0,40),
-                        fontFace=cv2.FONT_HERSHEY_PLAIN,
-                        fontScale=2,
-                        color=0,
-                        thickness=font_thickness,
-                        lineType=cv2.CV_AA)
-                    cx['false'+str(r)+str(c)] = cv2.resize(overview, dsize=(w*4,h*4))
 
 
 
