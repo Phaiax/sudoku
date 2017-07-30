@@ -72,13 +72,16 @@ class Context:
         return (ko['state'], has_changed)
 
     def got_key(self, key):
+        (_, _) = self.get_toggle('b', 1, None, init=0)
+        (_, _) = self.get_toggle('v', 1, None, init=0)
+
         if key in self.toggles:
             ko = self.toggles[key]
             ko['state'] += 1
             ko['has_changed'] = True
             if ko['callback'] is not None:
                 ko['callback'](None)
-            print "Key:", chr(key), "=", ko['state']
+            #print "Key:", chr(key), "=", ko['state']
             sys.stdout.flush()
 
         (_, ffd ) = self.get_toggle('b', 1, None, init=0)
@@ -120,8 +123,8 @@ class Context:
 
             if self._redraw:
                 self._redraw = False
-                print "imshow"
-                sys.stdout.flush()
+                #print "imshow"
+                #sys.stdout.flush()
                 cv2.imshow('image', self.buffers[self.cur_buf_id])
 
         cv2.destroyAllWindows()
