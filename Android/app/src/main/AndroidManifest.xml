@@ -31,7 +31,7 @@
             </intent-filter>
         </activity>
         <activity
-            android:name=".Tutorial1Activity"
+            android:name=".PrototypeActivity"
             android:configChanges="keyboardHidden|orientation"
             android:screenOrientation="landscape"></activity>
         <activity

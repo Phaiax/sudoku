@@ -34,7 +34,7 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onClick(View v) {
                 if (canUseCamera) {
-                    Intent intent = new Intent(MainActivity.this, Tutorial1Activity.class);
+                    Intent intent = new Intent(MainActivity.this, PrototypeActivity.class);
                     startActivity(intent);
                 }
             }

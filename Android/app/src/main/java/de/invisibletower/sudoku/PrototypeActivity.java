@@ -11,33 +11,34 @@ import org.opencv.android.CameraBridgeViewBase.CvCameraViewListener2;
 import org.opencv.imgproc.Imgproc;
 
 import android.os.Bundle;
+import android.provider.ContactsContract;
 import android.support.v7.app.AppCompatActivity;
 import android.support.v7.widget.Toolbar;
 import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.SurfaceView;
-import android.view.View;
 import android.view.WindowManager;
-import android.widget.Button;
-import android.widget.Toast;
 
-public class Tutorial1Activity extends AppCompatActivity implements CvCameraViewListener2 {
+import static org.opencv.core.CvType.CV_8UC1;
+
+public class PrototypeActivity extends AppCompatActivity implements CvCameraViewListener2 {
     private static final String TAG = "OCVSample::Activity";
 
     private static final int       VIEW_MODE_RGBA     = 0;
     private static final int       VIEW_MODE_GRAY     = 1;
     private static final int       VIEW_MODE_CANNY    = 2;
+    private static final int       VIEW_MODE_DEBUG1    = 4;
     private static final int       VIEW_MODE_FEATURES = 5;
 
     private int                    mViewMode;
     private Mat                    mRgba;
+    private Mat                    mRgbaSmall;
     private Mat                    mIntermediateMat;
     private Mat                    mGray;
 
     private CameraBridgeViewBase mOpenCvCameraView;
-    private boolean              mIsJavaCamera = true;
-    private MenuItem             mItemSwitchCamera = null;
+    private Recognizer recognizer;
 
 
     private BaseLoaderCallback mLoaderCallback = new BaseLoaderCallback(this) {
@@ -57,7 +58,7 @@ public class Tutorial1Activity extends AppCompatActivity implements CvCameraView
         }
     };
 
-    public Tutorial1Activity() {
+    public PrototypeActivity() {
         Log.i(TAG, "Instantiated new " + this.getClass());
     }
 
@@ -72,6 +73,9 @@ public class Tutorial1Activity extends AppCompatActivity implements CvCameraView
 
         Toolbar myToolbar = (Toolbar) findViewById(R.id.my_toolbar);
         setSupportActionBar(myToolbar);
+
+        recognizer = new Recognizer();
+        mViewMode = VIEW_MODE_DEBUG1;
 
         mOpenCvCameraView = (CameraBridgeViewBase) findViewById(R.id.tutorial1_activity_java_surface_view);
         mOpenCvCameraView.setVisibility(SurfaceView.VISIBLE);
@@ -128,6 +132,9 @@ public class Tutorial1Activity extends AppCompatActivity implements CvCameraView
     }
 
     public Mat onCameraFrame(CvCameraViewFrame inputFrame) {
+        mGray = inputFrame.gray();
+        recognizer.recognize(mGray);
+
         final int viewMode = mViewMode;
         switch (viewMode) {
             case VIEW_MODE_GRAY:
@@ -143,6 +150,10 @@ public class Tutorial1Activity extends AppCompatActivity implements CvCameraView
                 mRgba = inputFrame.rgba();
                 Imgproc.Canny(inputFrame.gray(), mIntermediateMat, 80, 100);
                 Imgproc.cvtColor(mIntermediateMat, mRgba, Imgproc.COLOR_GRAY2RGBA, 4);
+                break;
+            case VIEW_MODE_DEBUG1:
+                Imgproc.resize(recognizer.getDebugImage(), mGray, mGray.size());
+                Imgproc.cvtColor(mGray, mRgba, Imgproc.COLOR_GRAY2RGBA, 4);
                 break;
             case VIEW_MODE_FEATURES:
                 // input frame has RGBA format
@@ -174,6 +185,9 @@ public class Tutorial1Activity extends AppCompatActivity implements CvCameraView
                 break;
             case R.id.action_canny:
                 mViewMode = VIEW_MODE_CANNY;
+                break;
+            case R.id.action_debug1:
+                mViewMode = VIEW_MODE_DEBUG1;
                 break;
         }
 //        } else if (item == mItemPreviewCanny) {

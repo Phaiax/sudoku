@@ -15,5 +15,9 @@
         android:title="canny"
         app:showAsAction="never"/>
 
+    <item android:id="@+id/action_debug1"
+        android:title="Debug1"
+        app:showAsAction="never"/>
+
 
 </menu>
