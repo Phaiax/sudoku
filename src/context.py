@@ -128,3 +128,9 @@ class Context:
                 cv2.imshow('image', self.buffers[self.cur_buf_id])
 
         cv2.destroyAllWindows()
+
+    def save_all_buffers(self):
+        for (i, (k, b)) in enumerate(self.buffers_by_name.items()):
+            fn = "debug/%02d_%s.png" % (i, k)
+            cv2.imwrite(fn, b[0])
+

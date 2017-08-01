@@ -453,4 +453,5 @@ cx.add_buffer('orig', src=img)
 sud = improve(src=cx.b('orig'))
 
 cx.redraw()
+cx.save_all_buffers()
 cx.eventloop()
